@@ -63,7 +63,7 @@ function extract(rows){
   add("Nicole — 2",12,nicoleSecond+2,nicoleSecond<0?0:6);
   return result;
 }
-let entries=[],busy=false;
+let entries=[],busy=false; const expandedGroups=new Set();
 function statusLabel(text,kind){
   const el=$("connection");
   el.textContent=text;
@@ -75,12 +75,51 @@ function updateOptions(id,values,allText){
   for(const value of values)select.add(new Option(value,value));
   select.value=[...select.options].some(item=>item.value===previous)?previous:"all";
 }
+function renderDebts(selected){
+  const names=[...new Set(selected.map(item=>item.name))];
+  $("debtCount").textContent=names.length+" grupos";
+  const root=$("debtGrid");root.replaceChildren();
+  for(const name of names){
+    const items=selected.filter(item=>item.name===name);
+    const total=items.reduce((sum,item)=>sum+item.amount,0);
+    const paid=items.filter(item=>item.paid).reduce((sum,item)=>sum+item.amount,0);
+    const pct=total?Math.round(paid/total*100):0;
+    const card=document.createElement("article");card.className="debtCard";
+    const heading=document.createElement("h3");heading.textContent=name;card.append(heading);
+    const meta=document.createElement("div");meta.className="small";meta.textContent=items.length+" parcelas • "+items.filter(x=>x.paid).length+" pagas";card.append(meta);
+    const numbers=document.createElement("div");numbers.className="debtNumbers";
+    for(const [label,value,cls] of [["Total",total,""],["Restante",total-paid,"pendingText"]]){
+      const part=document.createElement("div");const l=document.createElement("span");l.className="small";l.textContent=label;const v=document.createElement("strong");v.className=cls;v.textContent=brl(value);part.append(l,v);numbers.append(part);
+    }
+    card.append(numbers);
+    const bar=document.createElement("div");bar.className="debtProgress";const fill=document.createElement("div");fill.style.width=pct+"%";bar.append(fill);card.append(bar);
+    const summary=document.createElement("div");summary.className="line small";summary.textContent=pct+"% quitado • "+brl(paid)+" pago";card.append(summary);
+    const list=document.createElement("div");list.className="installments";list.style.marginTop="13px";
+    const expanded=expandedGroups.has(name);const visible=expanded?items:items.slice(0,4);
+    for(const item of visible){
+      const line=document.createElement("div");line.className="installment";
+      const month=document.createElement("span");month.textContent=item.month;
+      const amount=document.createElement("span");amount.className="amount";amount.textContent=brl(item.amount);
+      const badge=document.createElement("span");badge.className="tag"+(item.paid?" paid":"");badge.textContent=item.paid?"Pago":"Pendente";
+      line.append(month,amount,badge);list.append(line);
+    }
+    card.append(list);
+    if(items.length>4){
+      const toggle=document.createElement("button");toggle.className="debtToggle";toggle.type="button";
+      toggle.textContent=expanded?"Mostrar menos":"Ver todas as "+items.length+" parcelas";
+      toggle.addEventListener("click",()=>{if(expandedGroups.has(name))expandedGroups.delete(name);else expandedGroups.add(name);show();});
+      card.append(toggle);
+    }
+    root.append(card);
+  }
+}
 function show(){
   const group=$("group").value,status=$("statusFilter").value,month=$("month").value;
   const selected=entries.filter(item=>
     (group==="all"||group===item.name)&&
     (status==="all"||(status==="paid"&&item.paid)||(status==="pending"&&!item.paid))&&
     (month==="all"||normalize(item.month)===normalize(month)));
+  renderDebts(selected);
   const total=selected.reduce((acc,item)=>acc+item.amount,0);
   const paidItems=selected.filter(item=>item.paid);
   const paid=paidItems.reduce((acc,item)=>acc+item.amount,0);
