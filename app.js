@@ -180,58 +180,78 @@ function show(){
   }
   $("empty").hidden=selected.length!==0;
 }
-async function loadCSV(){
-  const url="https://docs.google.com/spreadsheets/d/"+encodeURIComponent(cfg.spreadsheetId)+"/export?format=csv&gid="+encodeURIComponent(cfg.gid)+"&nocache="+Date.now();
-  const response=await fetch(url,{cache:"no-store",redirect:"follow"});
-  if(!response.ok)throw Error("HTTP "+response.status);
-  const text=await response.text();
-  if(/^\s*<!doctype|^\s*<html/i.test(text))throw Error("Resposta HTML em vez de CSV");
-  const rows=parseCSV(text);
-  if(extract(rows).length===0)throw Error("Nenhuma parcela localizada no CSV");
-  return rows;
-}
-function loadGviz(){
-  return new Promise((resolve,reject)=>{
-    const callback="__financeSheetResponse";
-    const script=document.createElement("script");
-    let finished=false;
-    const clear=()=>{if(finished)return false;finished=true;clearTimeout(timer);script.remove();try{delete window[callback];}catch(_){window[callback]=undefined;}return true;};
-    const timer=setTimeout(()=>{if(clear())reject(Error("Tempo esgotado na consulta ao Sheets"));},14000);
-    window[callback]=data=>{if(!clear())return;try{resolve(rowsFromGviz(data));}catch(e){reject(e);}};
-    script.onerror=()=>{if(clear())reject(Error("A consulta pública do Sheets não está disponível"));};
-    const tqx="out:json;responseHandler:"+callback;
-    script.src="https://docs.google.com/spreadsheets/d/"+encodeURIComponent(cfg.spreadsheetId)+"/gviz/tq?gid="+encodeURIComponent(cfg.gid)+"&headers=0&tqx="+encodeURIComponent(tqx)+"&nocache="+Date.now();
-    document.head.append(script);
+let accessToken=null,tokenClient=null,expiresAt=0;
+function readyForOAuth(){return Boolean(cfg.oauthClientId&&cfg.oauthClientId.includes(".apps.googleusercontent.com"));}
+function setupAuth(){
+  if(!readyForOAuth()){
+    statusLabel("Configuração pendente","bad");
+    $("authHelp").textContent="Falta configurar o Client ID OAuth do Google Cloud. Nenhum dado financeiro será carregado até a configuração.";
+    $("login").disabled=true;return;
+  }
+  if(!window.google?.accounts?.oauth2){statusLabel("Google indisponível","bad");$("authHelp").textContent="Não foi possível carregar o serviço de login do Google. Atualize a página.";return;}
+  tokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:cfg.oauthClientId,
+    scope:"https://www.googleapis.com/auth/spreadsheets.readonly",
+    callback:response=>{
+      if(response.error||!response.access_token){statusLabel("Acesso não autorizado","bad");return;}
+      accessToken=response.access_token;
+      expiresAt=Date.now()+Math.max(0,Number(response.expires_in||3600)-60)*1000;
+      $("privateContent").hidden=false;$("authNotice").hidden=true;
+      $("login").hidden=true;$("logout").hidden=false;
+      refresh();
+    },
+    error_callback:()=>statusLabel("Login cancelado","bad")
   });
+  statusLabel("Login necessário");
+  $("authHelp").textContent="O Google verificará as permissões da conta escolhida. O acesso é somente de leitura.";
+}
+function signIn(){
+  if(!tokenClient){setupAuth();if(!tokenClient)return;}
+  tokenClient.requestAccessToken({prompt:"select_account consent"});
+}
+function signOut(){
+  const token=accessToken;accessToken=null;expiresAt=0;
+  if(token&&window.google?.accounts?.oauth2)google.accounts.oauth2.revoke(token,()=>{});
+  entries=[];monthlyEntries=[];
+  $("privateContent").hidden=true;$("authNotice").hidden=false;
+  $("login").hidden=false;$("logout").hidden=true;
+  statusLabel("Sessão encerrada");
+}
+async function loadPrivateSheet(){
+  if(!accessToken||Date.now()>=expiresAt){signOut();throw Error("Sessão expirada. Entre novamente com o Google.");}
+  const range=encodeURIComponent("'Página1'!A1:AE100");
+  const url="https://sheets.googleapis.com/v4/spreadsheets/"+encodeURIComponent(cfg.spreadsheetId)+"/values/"+range+"?valueRenderOption=FORMATTED_VALUE";
+  const response=await fetch(url,{headers:{Authorization:"Bearer "+accessToken},cache:"no-store"});
+  if(response.status===401){signOut();throw Error("Sessão expirada. Entre novamente.");}
+  if(response.status===403)throw Error("Esta conta não tem permissão para ler a planilha, ou a Google Sheets API não está habilitada no projeto.");
+  if(response.status===404)throw Error("Planilha não encontrada ou indisponível para esta conta.");
+  if(!response.ok)throw Error("Falha na leitura privada (HTTP "+response.status+").");
+  const data=await response.json();
+  return data.values||[];
 }
 async function refresh(){
-  if(busy)return;
-  busy=true;
-  $("refresh").disabled=true;
-  statusLabel("Sincronizando...");
+  if(busy||!accessToken)return;
+  busy=true;$("refresh").disabled=true;statusLabel("Sincronizando...");
   try{
-    let rows;
-    try{rows=await loadCSV();}catch(error){rows=await loadGviz();}
+    const rows=await loadPrivateSheet();
     const parsed=extract(rows);
-    if(!parsed.length)throw Error("Não foram encontradas parcelas na aba publicada. Confira se Página1 está acessível publicamente.");
-    entries=parsed;
-    monthlyEntries=extractMonthly(rows);
-    renderMonthly();
+    if(!parsed.length)throw Error("Nenhuma parcela reconhecida na planilha.");
+    entries=parsed;monthlyEntries=extractMonthly(rows);renderMonthly();
     updateOptions("group",[...new Set(entries.map(item=>item.name))],"Todos os grupos");
     updateOptions("month",months.filter(m=>entries.some(item=>normalize(item.month)===m)).map(m=>m[0].toUpperCase()+m.slice(1)),"Todos os meses");
-    show();
-    statusLabel("Conectado","good");
+    show();statusLabel("Conectado","good");
     $("updated").textContent="Última leitura: "+new Date().toLocaleString("pt-BR");
     $("error").hidden=true;
   }catch(error){
     statusLabel("Sem sincronização","bad");
-    $("error").hidden=false;
-    $("error").textContent="Não foi possível ler a planilha pública: "+error.message+". Confira se a aba Página1 foi publicada na web como CSV e se o acesso anônimo está permitido. Os dados da última leitura, quando disponíveis, permanecem na tela.";
+    $("error").hidden=false;$("error").textContent=error.message;
   }finally{busy=false;$("refresh").disabled=false;}
 }
 $("group").addEventListener("change",show);
 $("statusFilter").addEventListener("change",show);
 $("month").addEventListener("change",show);
 $("refresh").addEventListener("click",refresh);
-refresh();
+$("login").addEventListener("click",signIn);
+$("logout").addEventListener("click",signOut);
+window.addEventListener("load",setupAuth);
 setInterval(refresh,Math.max(15000,Number(cfg.refreshMs)||30000));
