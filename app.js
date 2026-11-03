@@ -56,7 +56,7 @@ function extract(rows){
   const moto=findRow(rows,3,"PARCELAS MOTO");
   add("Parcelas da moto",3,moto+1,moto<0?0:48);
   const outros=findRow(rows,9,"DATA COMPRA",top+5);
-  add("Dívida 7",9,outros+2,outros<0?0:5);
+  add("Dívida 7",9,outros+1,outros<0?0:5);
   const nicoleFirst=findRow(rows,12,"DATA COMPRA",top+5);
   add("Nicole — 1",12,nicoleFirst+2,nicoleFirst<0?0:3);
   const nicoleSecond=findRow(rows,12,"DATA COMPRA",nicoleFirst+1);
@@ -80,7 +80,7 @@ function show(){
   const selected=entries.filter(item=>
     (group==="all"||group===item.name)&&
     (status==="all"||(status==="paid"&&item.paid)||(status==="pending"&&!item.paid))&&
-    (month==="all"||normalize(item.month)===month));
+    (month==="all"||normalize(item.month)===normalize(month)));
   const total=selected.reduce((acc,item)=>acc+item.amount,0);
   const paidItems=selected.filter(item=>item.paid);
   const paid=paidItems.reduce((acc,item)=>acc+item.amount,0);
