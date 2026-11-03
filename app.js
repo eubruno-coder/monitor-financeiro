@@ -193,14 +193,23 @@ function setupAuth(){
     client_id:cfg.oauthClientId,
     scope:"https://www.googleapis.com/auth/spreadsheets.readonly",
     callback:response=>{
-      if(response.error||!response.access_token){statusLabel("Acesso não autorizado","bad");return;}
+      if(response.error||!response.access_token){statusLabel("Acesso não autorizado","bad");$("authHelp").textContent="O Google não concedeu acesso: "+(response.error_description||response.error||"autorização não recebida")+". Confira os usuários de teste e as permissões da conta.";return;}
       accessToken=response.access_token;
       expiresAt=Date.now()+Math.max(0,Number(response.expires_in||3600)-60)*1000;
       $("privateContent").hidden=false;$("authNotice").hidden=true;
       $("login").hidden=true;$("logout").hidden=false;
       refresh();
     },
-    error_callback:()=>statusLabel("Login cancelado","bad")
+    error_callback:error=>{
+      const type=error?.type||"unknown";
+      const messages={
+        popup_failed_to_open:"O navegador bloqueou a janela de login do Google. Permita pop-ups para eubruno-coder.github.io e tente novamente.",
+        popup_closed:"A janela de autenticação do Google foi fechada antes da conclusão. Tente novamente e mantenha a janela aberta.",
+        unknown:"Não foi possível abrir ou concluir o login do Google. Verifique as permissões de pop-up e tente novamente."
+      };
+      statusLabel(type==="popup_closed"?"Janela fechada":"Falha no login","bad");
+      $("authHelp").textContent=messages[type]||("Falha de autenticação: "+type+". Verifique a configuração OAuth e tente novamente.");
+    }
   });
   statusLabel("Login necessário");
   $("authHelp").textContent="O Google verificará as permissões da conta escolhida. O acesso é somente de leitura.";
