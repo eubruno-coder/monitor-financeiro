@@ -1,0 +1,166 @@
+"use strict";
+const cfg=window.MONITOR_CONFIG;
+const $=id=>document.getElementById(id);
+const brl=value=>Number(value).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+const normalize=value=>String(value??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase();
+const months=["janeiro","fevereiro","marco","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+function money(value){
+  if(typeof value==="number")return value;
+  let s=String(value??"").trim().replace(/[^0-9,.-]/g,"");
+  if(!s)return NaN;
+  if(s.includes(","))s=s.replace(/\./g,"").replace(",",".");
+  return Number(s);
+}
+function parseCSV(input){
+  let rows=[],row=[],cell="",quoted=false;
+  const text=String(input).replace(/^\uFEFF/,"");
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++;}else quoted=!quoted;}
+    else if(c===","&&!quoted){row.push(cell);cell="";}
+    else if((c==="\r"||c==="\n")&&!quoted){if(c==="\r"&&text[i+1]==="\n")i++;row.push(cell);rows.push(row);row=[];cell="";}
+    else cell+=c;
+  }
+  if(cell||row.length){row.push(cell);rows.push(row);}
+  return rows;
+}
+function rowsFromGviz(response){
+  if(!response||response.status!=="ok"||!response.table||!Array.isArray(response.table.rows))throw Error("A fonte pública não devolveu uma tabela válida.");
+  return response.table.rows.map(row=>(row.c||[]).map(cell=>cell==null?"":(cell.f!=null?cell.f:(cell.v==null?"":cell.v))));
+}
+function findRow(rows,col,search,from=0){
+  for(let i=from;i<rows.length;i++)if(normalize((rows[i]||[])[col])===normalize(search))return i;
+  return -1;
+}
+function extract(rows){
+  const result=[];
+  const add=(name,col,start,count)=>{
+    if(start<0)return;
+    for(let r=start;r<Math.min(rows.length,start+count);r++){
+      const cells=rows[r]||[];
+      const month=String(cells[col]??"").trim();
+      const amount=money(cells[col+1]);
+      if(!months.includes(normalize(month))||!Number.isFinite(amount)||amount<=0)continue;
+      result.push({name,month,amount,paid:normalize(cells[col+2])==="pago"});
+    }
+  };
+  const top=findRow(rows,0,"QNT PARC");
+  if(top>=0){
+    [
+      ["Dívida 1",0],["Dívida 2",3],["Dívida 3",6],
+      ["Dívida 4",9],["Dívida 5",12],["Dívida 6",15]
+    ].forEach(([name,col])=>add(name,col,top+1,10));
+  }
+  const mensais=findRow(rows,0,"PAGAMENTO MÊS");
+  add("Pagamentos mensais",0,mensais+1,mensais<0?0:9);
+  const moto=findRow(rows,3,"PARCELAS MOTO");
+  add("Parcelas da moto",3,moto+1,moto<0?0:48);
+  const outros=findRow(rows,9,"DATA COMPRA",top+5);
+  add("Dívida 7",9,outros+2,outros<0?0:5);
+  const nicoleFirst=findRow(rows,12,"DATA COMPRA",top+5);
+  add("Nicole — 1",12,nicoleFirst+2,nicoleFirst<0?0:3);
+  const nicoleSecond=findRow(rows,12,"DATA COMPRA",nicoleFirst+1);
+  add("Nicole — 2",12,nicoleSecond+2,nicoleSecond<0?0:6);
+  return result;
+}
+let entries=[],busy=false;
+function statusLabel(text,kind){
+  const el=$("connection");
+  el.textContent=text;
+  el.className="pill"+(kind?" "+kind:"");
+}
+function updateOptions(id,values,allText){
+  const select=$(id),previous=select.value;
+  select.replaceChildren(new Option(allText,"all"));
+  for(const value of values)select.add(new Option(value,value));
+  select.value=[...select.options].some(item=>item.value===previous)?previous:"all";
+}
+function show(){
+  const group=$("group").value,status=$("statusFilter").value,month=$("month").value;
+  const selected=entries.filter(item=>
+    (group==="all"||group===item.name)&&
+    (status==="all"||(status==="paid"&&item.paid)||(status==="pending"&&!item.paid))&&
+    (month==="all"||normalize(item.month)===month));
+  const total=selected.reduce((acc,item)=>acc+item.amount,0);
+  const paidItems=selected.filter(item=>item.paid);
+  const paid=paidItems.reduce((acc,item)=>acc+item.amount,0);
+  const remaining=selected.length-paidItems.length;
+  const percent=total>0?Math.min(100,Math.max(0,Math.round(paid/total*100))):0;
+  $("total").textContent=brl(total);
+  $("paid").textContent=brl(paid);
+  $("pending").textContent=brl(total-paid);
+  $("count").textContent=String(selected.length);
+  $("paidCount").textContent=paidItems.length+" parcela(s) quitada(s)";
+  $("pendingCount").textContent=remaining+" parcela(s) sem confirmação";
+  $("percent").textContent=percent+"%";
+  $("bar").style.width=percent+"%";
+  $("progress").setAttribute("aria-valuenow",String(percent));
+  $("shown").textContent=selected.length+" resultados";
+  const tbody=$("rows");
+  tbody.replaceChildren();
+  for(const item of selected){
+    const tr=document.createElement("tr");
+    for(const value of [item.name,item.month,brl(item.amount)]){
+      const td=document.createElement("td");td.textContent=value;tr.append(td);
+    }
+    const td=document.createElement("td");
+    const badge=document.createElement("span");
+    badge.className="tag"+(item.paid?" paid":"");
+    badge.textContent=item.paid?"Pago":"Pendente";
+    td.append(badge);tr.append(td);tbody.append(tr);
+  }
+  $("empty").hidden=selected.length!==0;
+}
+async function loadCSV(){
+  const url="https://docs.google.com/spreadsheets/d/"+encodeURIComponent(cfg.spreadsheetId)+"/export?format=csv&gid="+encodeURIComponent(cfg.gid)+"&nocache="+Date.now();
+  const response=await fetch(url,{cache:"no-store",redirect:"follow"});
+  if(!response.ok)throw Error("HTTP "+response.status);
+  const text=await response.text();
+  if(/^\s*<!doctype|^\s*<html/i.test(text))throw Error("Resposta HTML em vez de CSV");
+  const rows=parseCSV(text);
+  if(extract(rows).length===0)throw Error("Nenhuma parcela localizada no CSV");
+  return rows;
+}
+function loadGviz(){
+  return new Promise((resolve,reject)=>{
+    const callback="__financeSheetResponse";
+    const script=document.createElement("script");
+    let finished=false;
+    const clear=()=>{if(finished)return false;finished=true;clearTimeout(timer);script.remove();try{delete window[callback];}catch(_){window[callback]=undefined;}return true;};
+    const timer=setTimeout(()=>{if(clear())reject(Error("Tempo esgotado na consulta ao Sheets"));},14000);
+    window[callback]=data=>{if(!clear())return;try{resolve(rowsFromGviz(data));}catch(e){reject(e);}};
+    script.onerror=()=>{if(clear())reject(Error("A consulta pública do Sheets não está disponível"));};
+    const tqx="out:json;responseHandler:"+callback;
+    script.src="https://docs.google.com/spreadsheets/d/"+encodeURIComponent(cfg.spreadsheetId)+"/gviz/tq?gid="+encodeURIComponent(cfg.gid)+"&headers=0&tqx="+encodeURIComponent(tqx)+"&nocache="+Date.now();
+    document.head.append(script);
+  });
+}
+async function refresh(){
+  if(busy)return;
+  busy=true;
+  $("refresh").disabled=true;
+  statusLabel("Sincronizando...");
+  try{
+    let rows;
+    try{rows=await loadCSV();}catch(error){rows=await loadGviz();}
+    const parsed=extract(rows);
+    if(!parsed.length)throw Error("Não foram encontradas parcelas na aba publicada. Confira se Página1 está acessível publicamente.");
+    entries=parsed;
+    updateOptions("group",[...new Set(entries.map(item=>item.name))],"Todos os grupos");
+    updateOptions("month",months.filter(m=>entries.some(item=>normalize(item.month)===m)).map(m=>m[0].toUpperCase()+m.slice(1)),"Todos os meses");
+    show();
+    statusLabel("Conectado","good");
+    $("updated").textContent="Última leitura: "+new Date().toLocaleString("pt-BR");
+    $("error").hidden=true;
+  }catch(error){
+    statusLabel("Sem sincronização","bad");
+    $("error").hidden=false;
+    $("error").textContent="Não foi possível ler a planilha pública: "+error.message+". Confira se a aba Página1 foi publicada na web como CSV e se o acesso anônimo está permitido. Os dados da última leitura, quando disponíveis, permanecem na tela.";
+  }finally{busy=false;$("refresh").disabled=false;}
+}
+$("group").addEventListener("change",show);
+$("statusFilter").addEventListener("change",show);
+$("month").addEventListener("change",show);
+$("refresh").addEventListener("click",refresh);
+refresh();
+setInterval(refresh,Math.max(15000,Number(cfg.refreshMs)||30000));
