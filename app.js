@@ -51,8 +51,6 @@ function extract(rows){
       ["Dívida 4",9],["Dívida 5",12],["Dívida 6",15]
     ].forEach(([name,col])=>add(name,col,top+1,10));
   }
-  const mensais=findRow(rows,0,"PAGAMENTO MÊS");
-  add("Pagamentos mensais",0,mensais+1,mensais<0?0:9);
   const moto=findRow(rows,3,"PARCELAS MOTO");
   add("Parcelas da moto",3,moto+1,moto<0?0:48);
   const outros=findRow(rows,9,"DATA COMPRA",top+5);
@@ -63,7 +61,7 @@ function extract(rows){
   add("Aluguel — 2",12,nicoleSecond+2,nicoleSecond<0?0:6);
   return result;
 }
-let entries=[],busy=false; const expandedGroups=new Set();
+let entries=[],monthlyEntries=[],busy=false; const expandedGroups=new Set();
 function statusLabel(text,kind){
   const el=$("connection");
   el.textContent=text;
@@ -74,6 +72,38 @@ function updateOptions(id,values,allText){
   select.replaceChildren(new Option(allText,"all"));
   for(const value of values)select.add(new Option(value,value));
   select.value=[...select.options].some(item=>item.value===previous)?previous:"all";
+}
+function extractMonthly(rows){
+  const start=findRow(rows,0,"PAGAMENTO MÊS");
+  if(start<0)return [];
+  const result=[];
+  for(let r=start+1;r<Math.min(rows.length,start+25);r++){
+    const cells=rows[r]||[];
+    const month=String(cells[0]??"").trim();
+    const amount=money(cells[1]);
+    if(!months.includes(normalize(month))||!Number.isFinite(amount)||amount<=0)continue;
+    result.push({month,amount,paid:normalize(cells[2])==="pago"});
+  }
+  return result;
+}
+function renderMonthly(){
+  const tbody=$("monthlyRows");tbody.replaceChildren();
+  const total=monthlyEntries.reduce((sum,item)=>sum+item.amount,0);
+  const paid=monthlyEntries.filter(item=>item.paid);
+  $("monthlyTotal").textContent=brl(total);
+  $("monthlyPaid").textContent=paid.length+" mês(es)";
+  $("monthlyPending").textContent=(monthlyEntries.length-paid.length)+" mês(es)";
+  $("monthlyEmpty").hidden=monthlyEntries.length!==0;
+  for(const item of monthlyEntries){
+    const tr=document.createElement("tr");
+    for(const value of [item.month,brl(item.amount)]){
+      const td=document.createElement("td");td.textContent=value;tr.append(td);
+    }
+    const td=document.createElement("td"),badge=document.createElement("span");
+    badge.className="tag"+(item.paid?" paid":"");
+    badge.textContent=item.paid?"Pago":"Pendente";
+    td.append(badge);tr.append(td);tbody.append(tr);
+  }
 }
 function renderDebts(selected){
   const names=[...new Set(selected.map(item=>item.name))];
@@ -185,6 +215,8 @@ async function refresh(){
     const parsed=extract(rows);
     if(!parsed.length)throw Error("Não foram encontradas parcelas na aba publicada. Confira se Página1 está acessível publicamente.");
     entries=parsed;
+    monthlyEntries=extractMonthly(rows);
+    renderMonthly();
     updateOptions("group",[...new Set(entries.map(item=>item.name))],"Todos os grupos");
     updateOptions("month",months.filter(m=>entries.some(item=>normalize(item.month)===m)).map(m=>m[0].toUpperCase()+m.slice(1)),"Todos os meses");
     show();
