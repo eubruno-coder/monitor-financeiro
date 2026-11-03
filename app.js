@@ -58,9 +58,9 @@ function extract(rows){
   const outros=findRow(rows,9,"DATA COMPRA",top+5);
   add("Dívida 7",9,outros+1,outros<0?0:5);
   const nicoleFirst=findRow(rows,12,"DATA COMPRA",top+5);
-  add("Nicole — 1",12,nicoleFirst+2,nicoleFirst<0?0:3);
+  add("Aluguel — 1",12,nicoleFirst+2,nicoleFirst<0?0:3);
   const nicoleSecond=findRow(rows,12,"DATA COMPRA",nicoleFirst+1);
-  add("Nicole — 2",12,nicoleSecond+2,nicoleSecond<0?0:6);
+  add("Aluguel — 2",12,nicoleSecond+2,nicoleSecond<0?0:6);
   return result;
 }
 let entries=[],busy=false; const expandedGroups=new Set();
