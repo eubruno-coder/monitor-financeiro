@@ -2,6 +2,12 @@
 
 Dashboard estático e responsivo para acompanhar os pagamentos da planilha **SITUAÇÃO FINANCEIRA** no Google Sheets.
 
+[![Status](https://img.shields.io/badge/status-V1%20%7C%20teste-blue)](#como-ativar-o-github-pages)
+[![Stack](https://img.shields.io/badge/stack-HTML%20%7C%20CSS%20%7C%20JavaScript-yellow)](#tecnologias)
+[![Dados](https://img.shields.io/badge/fonte-Google%20Sheets-34A853?logo=googlesheets&logoColor=white)](#fonte-dos-dados)
+
+---
+
 ## Acessos
 
 - **Repositório:** https://github.com/eubruno-coder/monitor-financeiro
