@@ -1,64 +1,138 @@
-# Monitor Financeiro · V1
+# Monitor Financeiro
 
-Dashboard estático e responsivo para acompanhar os pagamentos da planilha **SITUAÇÃO FINANCEIRA** no Google Sheets.
+> Dashboard web estático para leitura e visualização de dados tabulares publicados em uma planilha Google Sheets.
 
-[![Status](https://img.shields.io/badge/status-V1%20%7C%20teste-blue)](#como-ativar-o-github-pages)
+[![Status](https://img.shields.io/badge/status-V1%20%7C%20teste-blue)](#status)
 [![Stack](https://img.shields.io/badge/stack-HTML%20%7C%20CSS%20%7C%20JavaScript-yellow)](#tecnologias)
-[![Dados](https://img.shields.io/badge/fonte-Google%20Sheets-34A853?logo=googlesheets&logoColor=white)](#fonte-dos-dados)
+[![Fonte](https://img.shields.io/badge/fonte-Google%20Sheets-34A853?logo=googlesheets&logoColor=white)](#fonte-dos-dados)
 
 ---
 
-## Acessos
+## Objetivo
 
-- **Repositório:** https://github.com/eubruno-coder/monitor-financeiro
-- **Endereço esperado após habilitar o Pages:** https://eubruno-coder.github.io/monitor-financeiro/
-- **Planilha vinculada:** https://docs.google.com/spreadsheets/d/1a--i0Q93IaHzktjqwWgF5Y7ZGKW9Eqn-G57Lyz4T5oM/edit?gid=0
+O **Monitor Financeiro** demonstra como consumir dados tabulares publicados no Google Sheets e apresentá-los em um dashboard responsivo, sem manter um backend próprio na versão atual.
 
-> O repositório e o dashboard são públicos. Os dados da aba publicada também ficam disponíveis para leitura pública. Não cadastre informações confidenciais nessa aba.
+A aplicação foi concebida para leitura e acompanhamento. Ela não edita a planilha, não processa pagamentos e não substitui um sistema financeiro ou contábil.
 
-## Como ativar o GitHub Pages
+## Funcionalidades documentadas
 
-1. Abra o repositório e entre em **Settings → Pages**.
-2. Em **Build and deployment**, selecione **Deploy from a branch**.
-3. Selecione **main**, diretório **/(root)**, e clique em **Save**.
-4. Aguarde o GitHub indicar a publicação e abra o endereço do monitor acima.
-
-Nenhum servidor, banco pago ou chave de API é necessário para a versão de testes.
-
-## Fonte dos dados
-
-A configuração está no arquivo \`config.js\` e aponta para a aba **Página1** (\`gid=0\`) da planilha.
-
-O monitor tenta ler o CSV público em \`/export?format=csv&gid=0\`. Se o navegador bloquear o CSV por CORS ou a fonte não estiver disponível nessa rota, tenta a interface de visualização pública (\`/gviz/tq\`) por JSONP. A página informa claramente se nenhuma fonte puder ser consultada.
-
-É necessário publicar a **aba Página1**: **Arquivo → Compartilhar → Publicar na Web → Página1 → CSV → Publicar**. Essa ação não muda automaticamente as permissões de edição do arquivo original.
-
-## Atualizações
-
-- O site tenta uma nova leitura automaticamente a cada **30 segundos** enquanto a página estiver aberta.
-- O botão **Atualizar** força uma tentativa imediata.
-- O Google pode aplicar cache e atrasar a propagação dos novos pagamentos.
-- Se a fonte não estiver disponível, o monitor mantém os últimos dados lidos na sessão e exibe um aviso.
-
-## Estrutura dos dados
-
-A planilha possui blocos paralelos. Por isso, o monitor reconhece:
-
-- Seis grupos de dívidas na parte superior;
-- Pagamentos mensais;
-- 48 parcelas da moto, incluindo as últimas linhas da tabela;
-- Outros grupos de dívidas e registros identificados como Nicole.
-
-**Somente linhas que contêm um mês reconhecido e um valor positivo são consideradas parcelas.** Células auxiliares de totais, quantidades e saldos são ignoradas para evitar duplicações. Um status exatamente equivalente a \`Pago\` indica quitação; sem essa marcação, a parcela é exibida como \`Pendente\`. Não há inferência de atraso nem de ano, pois várias datas possuem somente o nome do mês.
-
-Os grupos sem nomes claros foram identificados provisoriamente como "Dívida 1" etc. Os rótulos e faixas podem ser ajustados em \`app.js\` conforme a planilha evoluir. Reorganizar linhas e colunas poderá exigir ajustes no parser.
+- Leitura de dados de uma aba publicada do Google Sheets.
+- Atualização automática periódica enquanto a página permanece aberta.
+- Botão para solicitar nova consulta.
+- Tratamento de indisponibilidade da fonte de dados.
+- Manutenção dos últimos dados carregados durante a sessão, acompanhada de aviso quando a sincronização falha.
+- Interface web responsiva.
 
 ## Tecnologias
 
-HTML5, CSS3 e JavaScript sem frameworks, com GitHub Pages para hospedagem. Dados consultados diretamente do Google Sheets, sem gravação ou edição pelo dashboard.
+- HTML5
+- CSS3
+- JavaScript Vanilla
+- Google Sheets como fonte externa
+- GitHub Pages para hospedagem estática
 
-## Diagnóstico de erros
+## Arquitetura atual
 
-Se aparecer **Sem sincronização**, confira se a planilha está publicada para acesso anônimo e se a aba **Página1** foi selecionada na publicação. Se os dois endpoints públicos falharem, será necessário configurar o **endereço CSV de publicação** emitido pelo Google (formato \`https://docs.google.com/spreadsheets/d/e/.../pub?output=csv\`) como fonte explícita ou adotar uma camada de integração dedicada.
+```text
+monitor-financeiro/
+├── index.html   # Interface do dashboard
+├── app.js       # Leitura, interpretação e apresentação dos dados
+├── config.js    # Identificação da planilha e parâmetros de consulta
+└── README.md
+```
 
-O GitHub Pages precisa ser habilitado uma vez nas configurações do repositório; enviar os arquivos por si só não ativa a hospedagem.
+## Fluxo de dados
+
+```text
+Google Sheets
+     │
+     ▼
+Aba publicada para leitura
+     │
+     ▼
+CSV / endpoint de visualização
+     │
+     ▼
+JavaScript no navegador
+     │
+     ▼
+Dashboard
+```
+
+O navegador consulta a fonte externa diretamente. Não existe camada intermediária de servidor na V1.
+
+## Configuração da fonte
+
+Os parâmetros de conexão ficam em `config.js`. Para utilizar outra planilha, configure o identificador e a aba correspondentes conforme o formato esperado pelo código.
+
+A aba precisa estar publicada para leitura pela aplicação. A publicação de uma aba torna seu conteúdo acessível a quem obtiver o endereço público; portanto, utilize somente dados apropriados para divulgação.
+
+**Não publique dados bancários, documentos, informações pessoais, dívidas identificáveis ou registros financeiros privados em uma planilha aberta.** Para dados reais e restritos, a arquitetura deve ser substituída por uma integração autenticada com controle de acesso no servidor.
+
+## Atualização e falhas
+
+- A aplicação tenta atualizar os dados em intervalos regulares.
+- O botão de atualização permite solicitar uma nova leitura.
+- A propagação de alterações pode sofrer atraso por cache do provedor.
+- Se a fonte não responder, a interface deve informar a falha em vez de apresentar dados antigos como se fossem atuais.
+
+## Limitações da V1
+
+- Somente leitura; o dashboard não altera a planilha.
+- A fonte de dados precisa estar publicada para acesso pelo navegador.
+- Não há autenticação própria nem isolamento de usuários.
+- Não há backend, banco de dados ou trilha de auditoria.
+- A estrutura da planilha influencia diretamente o parser; mudanças em linhas, colunas ou rótulos podem exigir ajustes no código.
+- A disponibilidade depende do Google Sheets e dos endpoints públicos utilizados.
+
+## Executar localmente
+
+1. Clone o repositório.
+2. Verifique os parâmetros em `config.js`.
+3. Inicie um servidor HTTP local ou utilize a publicação pelo GitHub Pages.
+4. Abra a aplicação no navegador.
+
+A consulta à planilha pode ser bloqueada quando o arquivo é aberto diretamente por `file://`, dependendo das políticas do navegador e da origem externa.
+
+## Publicação
+
+O projeto pode ser hospedado pelo GitHub Pages, utilizando a branch principal e a raiz do repositório como origem, desde que essa configuração esteja habilitada nas configurações do GitHub.
+
+## Roadmap
+
+### V1 — Dashboard de leitura
+- [x] Interface estática
+- [x] Consulta a fonte Google Sheets
+- [x] Atualização periódica
+- [x] Tratamento básico de falha de sincronização
+
+### V1.1 — Robustez
+- [ ] Validar esquema dos dados antes de renderizar
+- [ ] Melhorar mensagens de erro e diagnóstico
+- [ ] Adicionar testes para o parser
+- [ ] Separar apresentação e camada de dados
+- [ ] Documentar claramente os campos esperados
+
+### V2 — Segurança e evolução
+- [ ] Avaliar backend para fontes privadas
+- [ ] Implementar autenticação e autorização se houver múltiplos usuários
+- [ ] Adicionar histórico confiável de atualizações
+- [ ] Criar controles de acesso e auditoria
+- [ ] Definir política de retenção e privacidade
+
+## Status
+
+**V1 — protótipo de dashboard estático.** A aplicação demonstra leitura e visualização de uma fonte externa. Não deve ser utilizada para expor informações financeiras pessoais ou operar dados privados sem uma arquitetura de segurança apropriada.
+
+## Autor
+
+Desenvolvido por **Bruno Silva**.
+
+GitHub: [eubruno-coder](https://github.com/eubruno-coder)
+
+---
+
+**Projeto:** Monitor Financeiro  
+**Categoria:** Dashboard / Integração de dados  
+**Stack:** HTML, CSS, JavaScript e Google Sheets  
+**Status:** V1 — teste
